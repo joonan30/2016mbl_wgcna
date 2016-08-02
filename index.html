@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="UTF-8">
+    <title>2016mbl wgcna by joonan30</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="stylesheets/normalize.css" media="screen">
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/github-light.css" media="screen">
+  </head>
+  <body>
+    <section class="page-header">
+      <h1 class="project-name">2016mbl wgcna</h1>
+      <h2 class="project-tagline">A tutorial for WGCNA at the Neurobiology Course, Marine Biology Laboratory 2016</h2>
+      <a href="https://github.com/joonan30/2016mbl_wgcna" class="btn">View on GitHub</a>
+      <a href="https://github.com/joonan30/2016mbl_wgcna/zipball/master" class="btn">Download .zip</a>
+      <a href="https://github.com/joonan30/2016mbl_wgcna/tarball/master" class="btn">Download .tar.gz</a>
+    </section>
+
+    <section class="main-content">
+      <h1>
+<a id="weighted-correlation-network-analysis" class="anchor" href="#weighted-correlation-network-analysis" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Weighted correlation network analysis</h1>
+
+<blockquote>
+<p>MBL Neurobiology 2016</p>
+
+<p>Joon An, Sanders Lab, UCSF (<a href="mailto:JoonYong.An@ucsf.edu">JoonYong.An@ucsf.edu</a>)</p>
+</blockquote>
+
+<p><img src="https://cbs.asu.edu/sites/default/files/images/Octopus_MBLTeal.jpg" alt="Willsey 2013"><em>Image credit from MBL</em></p>
+
+<p>Co-exression network is a systems biology method to describe pattern(s) among genes across samples with multi-dimension information. This tutorial will use a R package, called Weighted correlation network analysis (WGCNA), for co-expression network analysis.</p>
+
+<h2>
+<a id="step0-set-up-the-current-run" class="anchor" href="#step0-set-up-the-current-run" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Step0. Set-up the current run</h2>
+
+<p>To do WGCNA, you first need to install WGCNA on your machine. In the R Studio console, please type the following command. The installation of WGCNA requires several R packages and dependency. Also, you need to install some packages for this script. This step will take some time (and often ERRORS).</p>
+
+<div class="highlight highlight-source-r"><pre>source(<span class="pl-s"><span class="pl-pds">"</span>http://bioconductor.org/biocLite.R<span class="pl-pds">"</span></span>) 
+
+biocLite(c(<span class="pl-s"><span class="pl-pds">"</span>AnnotationDbi<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>impute<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>GO.db<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>preprocessCore<span class="pl-pds">"</span></span>)) 
+
+install.packages(<span class="pl-s"><span class="pl-pds">"</span>WGCNA<span class="pl-pds">"</span></span>)</pre></div>
+
+<p>Now load packages.</p>
+
+<div class="highlight highlight-source-r"><pre>library(<span class="pl-smi">WGCNA</span>)
+library(<span class="pl-smi">igraph</span>) <span class="pl-c">## Plot networks</span>
+<span class="pl-c">#library(GEOquery) ## Automatically get GEO data</span>
+<span class="pl-c">#library(biomaRt) ## Annotations from biomaRt (host is set to use Gencode v10)</span></pre></div>
+
+<p>Once you finished the installation, then you can set up the current run. First, specifiy your working directory, where <strong>input and output data</strong> will be located. Also, set some working enrivorment parameters.</p>
+
+<div class="highlight highlight-source-r"><pre>options(<span class="pl-v">stringsAsFactors</span><span class="pl-k">=</span><span class="pl-c1">FALSE</span>)
+<span class="pl-c"># Number of processes for this script. It depends on your computing power.</span>
+allowWGCNAThreads(<span class="pl-v">nThreads</span> <span class="pl-k">=</span> <span class="pl-c1">2</span>) </pre></div>
+
+<h3>
+<a id="download-tutorial-files" class="anchor" href="#download-tutorial-files" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Download tutorial files</h3>
+
+<p>The tutorial data is located in <code>Bioinformatics/WGCNA</code> on the MBL Dropbox. Please download following files in your working directory:</p>
+
+<ul>
+<li><code>20160608_kallisto_tpm.txt</code></li>
+<li><code>sleuth_sample_example.txt</code></li>
+<li><code>20160605_kallisto_tpm.geneData.txt</code></li>
+<li><code>data_expression.txt</code></li>
+</ul>
+
+<h2>
+<a id="step1-load-your-data" class="anchor" href="#step1-load-your-data" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Step1. Load your data</h2>
+
+<p>WGCNA requires a matrix format (aka table). In this tutorial, you will use three matrix data. </p>
+
+<h3>
+<a id="load-expression-profiles" class="anchor" href="#load-expression-profiles" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Load expression profiles</h3>
+
+<p>First, load an expression profile. This data contains an expression profile, obtained from your RNAseq. After loading this matrix, check the dimension of your data. You can also see the first few lines of the data using the <code>head</code> function.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-smi">datExpr</span> <span class="pl-k">&lt;-</span> read.csv(<span class="pl-s"><span class="pl-pds">'</span>20160608_kallisto_tpm.txt<span class="pl-pds">'</span></span>,<span class="pl-v">header</span><span class="pl-k">=</span><span class="pl-c1">T</span>,<span class="pl-v">sep</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span><span class="pl-cce">\t</span><span class="pl-pds">'</span></span>) 
+dim(<span class="pl-smi">datExpr</span>)
+head(<span class="pl-smi">datExpr</span>)</pre></div>
+
+<h3>
+<a id="load-a-meta-data" class="anchor" href="#load-a-meta-data" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Load a meta data</h3>
+
+<p>Then, load a meta data. This data contains external information regarding samples or experimental conditions - mutant or wile-type, developmental stages, tissue types, etc. Again, this is a matrix format.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-smi">datMeta</span> <span class="pl-k">&lt;-</span> read.csv(<span class="pl-s"><span class="pl-pds">'</span>sampleInfo.txt<span class="pl-pds">'</span></span>,<span class="pl-v">header</span><span class="pl-k">=</span><span class="pl-c1">T</span>,<span class="pl-v">sep</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span><span class="pl-cce">\t</span><span class="pl-pds">'</span></span>) 
+head(<span class="pl-smi">datMeta</span>)</pre></div>
+
+<h3>
+<a id="load-a-gene-data" class="anchor" href="#load-a-gene-data" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Load a gene data</h3>
+
+<p>Lastly, load a gene data. This data contains information about genes. Since the expression dataset is based on transcripts, we will collapse the expression data into the gene level.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-c"># Check the number of transcripts and genes</span>
+
+length(<span class="pl-smi">geneData</span><span class="pl-k">$</span><span class="pl-smi">target_id</span>); length(unique(<span class="pl-smi">geneData</span><span class="pl-k">$</span><span class="pl-smi">gene_name</span>))
+
+<span class="pl-c"># Collapse expression values among transcripts from the same gene.</span>
+
+rownames(<span class="pl-smi">datExpr</span>) <span class="pl-k">=</span> <span class="pl-smi">geneData</span><span class="pl-k">$</span><span class="pl-smi">target_id</span>
+
+<span class="pl-smi">collapseDat</span> <span class="pl-k">&lt;-</span> collapseRows(<span class="pl-v">datET</span> <span class="pl-k">=</span> <span class="pl-smi">datExpr</span>,<span class="pl-v">method</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>MaxMean<span class="pl-pds">"</span></span>,
+                            <span class="pl-v">rowGroup</span> <span class="pl-k">=</span> <span class="pl-smi">geneDat</span><span class="pl-k">$</span><span class="pl-smi">gene_name</span>,<span class="pl-v">rowID</span> <span class="pl-k">=</span> rownames(<span class="pl-smi">datExpr</span>))</pre></div>
+
+<p>To do faster tutorial, we will use the pre-made dataset. Please load the data.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-smi">geneData</span> <span class="pl-k">&lt;-</span> read.csv(<span class="pl-s"><span class="pl-pds">'</span>20160605_kallisto_tpm.geneData.txt<span class="pl-pds">'</span></span>,<span class="pl-v">header</span><span class="pl-k">=</span><span class="pl-c1">T</span>,<span class="pl-v">sep</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span><span class="pl-cce">\t</span><span class="pl-pds">'</span></span>)
+
+head(<span class="pl-smi">geneData</span>)
+</pre></div>
+
+<h2>
+<a id="step2-explore-topology-of-the-network" class="anchor" href="#step2-explore-topology-of-the-network" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Step2. Explore Topology of the Network</h2>
+
+<p>A biological system is a kind of scale-free network, where interactions are not randomly distributed across genes, proteins or any form of interactors, and thus exibits hierachical and structural characteristics. </p>
+
+<p>Gene-expression can be used to describe this using the network concept, in which nodes are genes and edges between nodes exist when gene expression profiles are significantly correlated (coexpressed) across all samples. </p>
+
+<p>Okay. I will stop writing the book. Perhaps you might want to read some interesting literatures: </p>
+
+<p><a href="http://www.ncbi.nlm.nih.gov/pubmed/14735121">Network biology: understanding the cell's functional organization, Barabási and Oltval, 2004</a></p>
+
+<p><a href="http://www.ncbi.nlm.nih.gov/pubmed/22715880">Evolution of synapse complexity and diversity. Emes and Grant, 2012</a></p>
+
+<p><a href="http://www.ncbi.nlm.nih.gov/pubmed/26149713">Systems biology and gene networks in neurodevelopmental and neurodegenerative disorders, Parikshak et al., 2015</a></p>
+
+<h3>
+<a id="find-a-soft-thresholding-power-for-network-construction" class="anchor" href="#find-a-soft-thresholding-power-for-network-construction" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Find a soft-thresholding power for network construction</h3>
+
+<p>This step will find scale free topology of the network given a range of multiple soft thresholding powers. The aim of this step is to help you choose an appropriate power for network construction.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-c"># set the powers to examine network topoloy</span>
+<span class="pl-smi">powers</span> <span class="pl-k">&lt;-</span> seq(<span class="pl-c1">1</span>,<span class="pl-c1">10</span>,<span class="pl-v">by</span><span class="pl-k">=</span><span class="pl-c1">1</span>)
+
+<span class="pl-smi">sft</span> <span class="pl-k">&lt;-</span> pickSoftThreshold(t(<span class="pl-smi">datExpr</span>),
+                         <span class="pl-v">powerVector</span><span class="pl-k">=</span><span class="pl-smi">powers</span>,
+                         <span class="pl-v">corFnc</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>bicor<span class="pl-pds">"</span></span>,<span class="pl-v">networkType</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>signed<span class="pl-pds">"</span></span>)
+
+
+<span class="pl-c"># This will return you a table like below (numbers may not match):</span>
+<span class="pl-c"># Power SFT.R.sq slope truncated.R.sq mean.k. median.k. max.k.</span>
+<span class="pl-c"># 1    0.635 12.400          0.869 12000.0  1.28e+04  15600</span>
+<span class="pl-c"># 2    0.731 13.000          0.651  3630.0  3.74e+03   6140</span>
+<span class="pl-c"># 3    0.461  7.000          0.862  1270.0  1.21e+03   2790</span>
+<span class="pl-c"># 4    0.130 -0.221          0.691   526.0  4.33e+02   1910</span>
+<span class="pl-c"># 5    0.821 -1.580          0.773   266.0  1.70e+02   1580</span>
+<span class="pl-c"># 6    0.828 -1.510          0.839   161.0  7.41e+01   1410</span>
+<span class="pl-c"># 7    0.816 -1.380          0.876   112.0  3.51e+01   1310</span>
+<span class="pl-c"># 8    0.804 -1.280          0.903    85.9  1.82e+01   1240</span>
+<span class="pl-c"># 9    0.801 -1.200          0.918    70.3  1.00e+01   1180</span>
+<span class="pl-c"># 10    0.792 -1.110          0.946    60.1  5.90e+00   1140</span></pre></div>
+
+<p>Now you plot your result and pick up the power. </p>
+
+<div class="highlight highlight-source-r"><pre>par(<span class="pl-v">mfrow</span> <span class="pl-k">=</span> c(<span class="pl-c1">1</span>,<span class="pl-c1">2</span>)) <span class="pl-c"># Set the plot screen </span>
+<span class="pl-v">cex1</span> <span class="pl-k">=</span> <span class="pl-c1">0.9</span>
+
+<span class="pl-c"># Scale-free topology fit index as a function of the soft-thresholding power</span>
+
+plot(<span class="pl-smi">sft</span><span class="pl-k">$</span><span class="pl-smi">fitIndices</span>[,<span class="pl-c1">1</span>], <span class="pl-k">-</span>sign(<span class="pl-smi">sft</span><span class="pl-k">$</span><span class="pl-smi">fitIndices</span>[,<span class="pl-c1">3</span>])<span class="pl-k">*</span><span class="pl-smi">sft</span><span class="pl-k">$</span><span class="pl-smi">fitIndices</span>[,<span class="pl-c1">2</span>], 
+    <span class="pl-v">xlab</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>Soft Threshold (power)<span class="pl-pds">"</span></span>, 
+    <span class="pl-v">ylab</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>Scale Free Topology Model Fit, signed R^2<span class="pl-pds">"</span></span>,<span class="pl-v">type</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>n<span class="pl-pds">"</span></span>,
+    <span class="pl-v">main</span> <span class="pl-k">=</span> paste(<span class="pl-s"><span class="pl-pds">"</span>Scale independence<span class="pl-pds">"</span></span>))
+
+text(<span class="pl-smi">sft</span><span class="pl-k">$</span><span class="pl-smi">fitIndices</span>[,<span class="pl-c1">1</span>], 
+    <span class="pl-k">-</span>sign(<span class="pl-smi">sft</span><span class="pl-k">$</span><span class="pl-smi">fitIndices</span>[,<span class="pl-c1">3</span>])<span class="pl-k">*</span><span class="pl-smi">sft</span><span class="pl-k">$</span><span class="pl-smi">fitIndices</span>[,<span class="pl-c1">2</span>],
+    <span class="pl-v">labels</span><span class="pl-k">=</span><span class="pl-smi">powers</span>,<span class="pl-v">cex</span><span class="pl-k">=</span><span class="pl-smi">cex1</span>,<span class="pl-v">col</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>red<span class="pl-pds">"</span></span>);
+
+<span class="pl-c"># Mean connectivity as a function of the soft-thresholding power</span>
+
+plot(<span class="pl-smi">sft</span><span class="pl-k">$</span><span class="pl-smi">fitIndices</span>[,<span class="pl-c1">1</span>], <span class="pl-smi">sft</span><span class="pl-k">$</span><span class="pl-smi">fitIndices</span>[,<span class="pl-c1">5</span>],
+    <span class="pl-v">xlab</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>Soft Threshold (power)<span class="pl-pds">"</span></span>,
+    <span class="pl-v">ylab</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>Mean Connectivity<span class="pl-pds">"</span></span>, <span class="pl-v">type</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>n<span class="pl-pds">"</span></span>, 
+    <span class="pl-v">main</span> <span class="pl-k">=</span> paste(<span class="pl-s"><span class="pl-pds">"</span>Mean connectivity<span class="pl-pds">"</span></span>))
+
+text(<span class="pl-smi">sft</span><span class="pl-k">$</span><span class="pl-smi">fitIndices</span>[,<span class="pl-c1">1</span>], <span class="pl-smi">sft</span><span class="pl-k">$</span><span class="pl-smi">fitIndices</span>[,<span class="pl-c1">5</span>], 
+    <span class="pl-v">labels</span><span class="pl-k">=</span><span class="pl-smi">powers</span>, <span class="pl-v">cex</span><span class="pl-k">=</span><span class="pl-smi">cex1</span>,<span class="pl-v">col</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>red<span class="pl-pds">"</span></span>)</pre></div>
+
+<p>Choosing the optimal power is not easy but the general suggestion is to choose a number you see the saturation of the graph. You can read the developer's suggestions. Please have the 6th question: <a href="https://labs.genetics.ucla.edu/horvath/CoexpressionNetwork/Rpackages/WGCNA/faq.html">WGCNA FAQ</a>  </p>
+
+<p>Now you can set the power for your network construction</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-smi">power</span> <span class="pl-k">&lt;-</span> <span class="pl-c1">9</span></pre></div>
+
+<h2>
+<a id="step3-construct-a-co-expression-network" class="anchor" href="#step3-construct-a-co-expression-network" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Step3. Construct a co-expression network</h2>
+
+<h4>
+<a id="run-wgcna-using-the-semi-automated-function" class="anchor" href="#run-wgcna-using-the-semi-automated-function" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Run WGCNA using the semi-automated function</h4>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-smi">net</span> <span class="pl-k">&lt;-</span> blockwiseModules(t(<span class="pl-smi">datExpr</span>),
+        <span class="pl-v">power</span><span class="pl-k">=</span><span class="pl-smi">power</span>,
+        <span class="pl-v">deepSplit</span><span class="pl-k">=</span><span class="pl-c1">2</span>,
+        <span class="pl-v">minModuleSize</span><span class="pl-k">=</span><span class="pl-c1">200</span>,
+        <span class="pl-v">minKMEtoStay</span><span class="pl-k">=</span><span class="pl-c1">0</span>,
+        <span class="pl-v">mergeCutHeight</span><span class="pl-k">=</span><span class="pl-c1">0.50</span>,
+        <span class="pl-v">detectCutHeight</span><span class="pl-k">=</span><span class="pl-c1">0.99995</span>,
+        <span class="pl-v">impute</span><span class="pl-k">=</span><span class="pl-c1">TRUE</span>,
+        <span class="pl-v">corType</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>bicor<span class="pl-pds">"</span></span>,
+        <span class="pl-v">networkType</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>signed<span class="pl-pds">"</span></span>,
+        <span class="pl-v">pamStage</span><span class="pl-k">=</span><span class="pl-c1">FALSE</span>,
+        <span class="pl-v">verbose</span><span class="pl-k">=</span><span class="pl-c1">3</span>,<span class="pl-v">saveTOMs</span><span class="pl-k">=</span><span class="pl-c1">FALSE</span>,
+        <span class="pl-v">maxBlockSize</span><span class="pl-k">=</span><span class="pl-c1">1000</span>) </pre></div>
+
+<p>You can see the details about parameters. Type this: </p>
+
+<div class="highlight highlight-source-r"><pre>?<span class="pl-smi">blockwiseModules</span></pre></div>
+
+<p>Now you can check the number of modules in your network and the number of module genes. </p>
+
+<div class="highlight highlight-source-r"><pre>table(<span class="pl-smi">net</span><span class="pl-k">$</span><span class="pl-smi">colors</span>)
+
+<span class="pl-c"># The result will be like:</span>
+<span class="pl-c"># black      blue     brown     green      grey       red turquoise    yellow </span>
+<span class="pl-c"># 415      1914       887       749      9519       661      2494       782 </span></pre></div>
+
+<p>Module colours do not have any meaning, except a visual/labelling purpose. </p>
+
+<p>Note that <strong>GREY IS RESERVED to color genes that are not part of any module</strong>. Do you have the large number of Grey module genes? What would be a reason for this?</p>
+
+<h2>
+<a id="step4-visualize-the-relationship-of-modules" class="anchor" href="#step4-visualize-the-relationship-of-modules" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Step4. Visualize the relationship of modules</h2>
+
+<h3>
+<a id="get-a-adjacency-matrix-for-the-hierarchical-clustering-function" class="anchor" href="#get-a-adjacency-matrix-for-the-hierarchical-clustering-function" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Get a adjacency matrix for the hierarchical clustering function</h3>
+
+<p>This step creates an adjacency matrix from an expression profile. This matrix will be used to compute network topology (Topological Overlap Matrix) (<a href="https://labs.genetics.ucla.edu/horvath/GeneralFramework/WeightedNetwork2005.pdf">Zhang et al., 2005</a>)</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-v">adjacency</span> <span class="pl-k">=</span> adjacency(t(<span class="pl-smi">datExpr</span>), <span class="pl-v">power</span> <span class="pl-k">=</span> <span class="pl-smi">power</span>)
+<span class="pl-v">TOM</span> <span class="pl-k">=</span> TOMsimilarity(<span class="pl-smi">adjacency</span>)
+<span class="pl-v">dissTOM</span> <span class="pl-k">=</span> <span class="pl-c1">1</span><span class="pl-k">-</span><span class="pl-smi">TOM</span>
+<span class="pl-v">geneTree</span> <span class="pl-k">=</span> hclust(as.dist(<span class="pl-smi">dissTOM</span>), <span class="pl-v">method</span> <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">"</span>average<span class="pl-pds">"</span></span>)
+
+<span class="pl-c"># Plot</span>
+plotDendroAndColors(<span class="pl-smi">geneTree</span>, 
+                        <span class="pl-smi">net</span><span class="pl-k">$</span><span class="pl-smi">colors</span>, 
+                        <span class="pl-s"><span class="pl-pds">"</span>Dynamic Tree Cut<span class="pl-pds">"</span></span>,
+                    <span class="pl-v">dendroLabels</span> <span class="pl-k">=</span> <span class="pl-c1">FALSE</span>, 
+                    <span class="pl-v">hang</span> <span class="pl-k">=</span> <span class="pl-c1">0.03</span>,
+                    <span class="pl-v">addGuide</span> <span class="pl-k">=</span> <span class="pl-c1">TRUE</span>, 
+                    <span class="pl-v">guideHang</span> <span class="pl-k">=</span> <span class="pl-c1">0.05</span>,
+                    <span class="pl-v">main</span> <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">"</span>Gene Dendrogram and Module                      Colors<span class="pl-pds">"</span></span>)</pre></div>
+
+<p>You can also plot a multidimensional scaling plot can show similar information about module relationships in two dimensions. This plots the first two principal components of the distance matrix.</p>
+
+<div class="highlight highlight-source-r"><pre>par(<span class="pl-v">mfrow</span> <span class="pl-k">=</span> c(<span class="pl-c1">1</span>,<span class="pl-c1">1</span>),<span class="pl-v">mar</span><span class="pl-k">=</span>c(<span class="pl-c1">5</span>,<span class="pl-c1">4</span>,<span class="pl-c1">2</span>,<span class="pl-c1">2</span>))
+
+<span class="pl-v">MEs</span> <span class="pl-k">=</span> <span class="pl-smi">net</span><span class="pl-k">$</span><span class="pl-smi">MEs</span> <span class="pl-c">#the module eigengenes</span>
+
+<span class="pl-c"># Choose module colors</span>
+<span class="pl-v">moduleColors_idx</span> <span class="pl-k">=</span> unique(<span class="pl-smi">net</span><span class="pl-k">$</span><span class="pl-smi">colors</span>) 
+
+colnames(<span class="pl-smi">MEs</span>) <span class="pl-k">=</span> <span class="pl-smi">moduleColors_idx</span> 
+
+<span class="pl-v">MDS</span> <span class="pl-k">=</span> cmdscale(as.dist(<span class="pl-smi">distance</span>),<span class="pl-c1">2</span>) 
+
+plot(<span class="pl-smi">MDS</span>, 
+    <span class="pl-v">col</span><span class="pl-k">=</span><span class="pl-smi">moduleColors_idx</span>, 
+    <span class="pl-v">xlab</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span>1st Principle Component<span class="pl-pds">'</span></span>, 
+    <span class="pl-v">ylab</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span>2nd Principle Component<span class="pl-pds">'</span></span>,
+    <span class="pl-v">xlim</span><span class="pl-k">=</span>c(<span class="pl-k">-</span><span class="pl-c1">0.5</span>,<span class="pl-c1">0.5</span>),<span class="pl-v">ylim</span><span class="pl-k">=</span>c(<span class="pl-k">-</span><span class="pl-c1">0.4</span>,<span class="pl-c1">0.4</span>))
+
+text(<span class="pl-smi">MDS</span>[,<span class="pl-c1">1</span>], <span class="pl-smi">MDS</span>[,<span class="pl-c1">2</span>], 
+    <span class="pl-smi">moduleColors_idx</span>, 
+    <span class="pl-v">pos</span><span class="pl-k">=</span> <span class="pl-c1">3</span>, <span class="pl-v">cex</span><span class="pl-k">=</span><span class="pl-c1">0.8</span>)</pre></div>
+
+<h2>
+<a id="step-5-characterize-modules-by-external-information" class="anchor" href="#step-5-characterize-modules-by-external-information" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Step 5. Characterize modules by external information</h2>
+
+<p>Now, you will examine which external information is related to network modules.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-c"># List your external information</span>
+colnames(<span class="pl-smi">datMeta</span>)
+
+<span class="pl-c"># Choose the genotype for your analysis</span>
+<span class="pl-c"># Create a categorical value and add to a new column</span>
+<span class="pl-smi">datMeta</span><span class="pl-k">$</span><span class="pl-smi">mut</span> <span class="pl-k">&lt;-</span> ifelse(<span class="pl-smi">datMeta</span><span class="pl-k">$</span><span class="pl-smi">genotype</span><span class="pl-k">!=</span><span class="pl-s"><span class="pl-pds">"</span>ctr_wt<span class="pl-pds">"</span></span>,<span class="pl-s"><span class="pl-pds">'</span>red<span class="pl-pds">'</span></span>, <span class="pl-s"><span class="pl-pds">'</span>darkblue<span class="pl-pds">'</span></span>)
+
+<span class="pl-c"># Plot</span>
+barplot(<span class="pl-smi">MEs</span><span class="pl-k">$</span><span class="pl-smi">green</span>,<span class="pl-v">col</span><span class="pl-k">=</span><span class="pl-smi">datMeta</span><span class="pl-k">$</span><span class="pl-smi">mut</span>,
+        <span class="pl-v">width</span><span class="pl-k">=</span><span class="pl-c1">0.1</span>, <span class="pl-v">xlab</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span>Samples<span class="pl-pds">'</span></span>, <span class="pl-v">ylab</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span>Eigen Value<span class="pl-pds">'</span></span>, 
+        <span class="pl-v">names.arg</span><span class="pl-k">=</span><span class="pl-smi">datMeta</span><span class="pl-k">$</span><span class="pl-smi">sample</span>,
+        <span class="pl-v">las</span><span class="pl-k">=</span><span class="pl-c1">2</span>,<span class="pl-v">beside</span> <span class="pl-k">=</span> <span class="pl-c1">TRUE</span>,
+        <span class="pl-v">main</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span>Green Module<span class="pl-pds">'</span></span>) 
+
+legend(<span class="pl-s"><span class="pl-pds">"</span>topright<span class="pl-pds">"</span></span>,<span class="pl-v">inset</span><span class="pl-k">=</span>c(<span class="pl-c1">0.10</span>,<span class="pl-c1">0</span>), 
+       <span class="pl-v">fill</span><span class="pl-k">=</span>c(<span class="pl-s"><span class="pl-pds">"</span>darkblue<span class="pl-pds">"</span></span>,<span class="pl-s"><span class="pl-pds">"</span>red<span class="pl-pds">"</span></span>), 
+       <span class="pl-v">legend</span><span class="pl-k">=</span>c(<span class="pl-s"><span class="pl-pds">"</span>Controls<span class="pl-pds">"</span></span>,<span class="pl-s"><span class="pl-pds">"</span>Mutants<span class="pl-pds">"</span></span>))</pre></div>
+
+<p>Here you will test association of network modules with the expression data of head tissues. Create a new column containing categorical values for your external information.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-c"># Again, set your comparison set from external information</span>
+
+<span class="pl-smi">datMeta</span><span class="pl-k">$</span><span class="pl-smi">exp</span> <span class="pl-k">&lt;-</span> ifelse(<span class="pl-smi">datMeta</span><span class="pl-k">$</span><span class="pl-smi">genotype</span><span class="pl-k">!=</span><span class="pl-s"><span class="pl-pds">"</span>ctr_wt<span class="pl-pds">"</span></span>,<span class="pl-c1">1</span>, <span class="pl-c1">0</span>)
+
+<span class="pl-c"># Calculate correlation between module eigen values and external information</span>
+
+<span class="pl-c"># net$MEs is the column contains module eigen values across samples</span>
+
+head(<span class="pl-smi">net</span><span class="pl-k">$</span><span class="pl-smi">MEs</span>)
+
+<span class="pl-v">moduleTraitCor</span> <span class="pl-k">=</span> cor(<span class="pl-smi">net</span><span class="pl-k">$</span><span class="pl-smi">MEs</span>, <span class="pl-smi">datMeta</span><span class="pl-k">$</span><span class="pl-smi">exp</span>, <span class="pl-v">use</span> <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">"</span>p<span class="pl-pds">"</span></span>)
+
+<span class="pl-v">moduleTraitPvalue</span> <span class="pl-k">=</span> corPvalueStudent(<span class="pl-smi">moduleTraitCor</span>, <span class="pl-c1">96</span>)
+
+<span class="pl-v">textMatrix</span> <span class="pl-k">=</span> paste(signif(<span class="pl-smi">moduleTraitCor</span>, <span class="pl-c1">2</span>),
+                <span class="pl-s"><span class="pl-pds">"</span>(<span class="pl-pds">"</span></span>, signif(<span class="pl-smi">moduleTraitPvalue</span>, <span class="pl-c1">1</span>), 
+                <span class="pl-s"><span class="pl-pds">"</span>)<span class="pl-pds">"</span></span>, <span class="pl-v">sep</span> <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">"</span> <span class="pl-pds">"</span></span>)
+
+dim(<span class="pl-smi">textMatrix</span>) <span class="pl-k">=</span> dim(<span class="pl-smi">moduleTraitCor</span>)
+
+par(<span class="pl-v">mar</span> <span class="pl-k">=</span> c(<span class="pl-c1">3</span>, <span class="pl-c1">5</span>, <span class="pl-c1">3</span>, <span class="pl-c1">3</span>))
+
+labeledHeatmap(<span class="pl-v">Matrix</span> <span class="pl-k">=</span> <span class="pl-smi">moduleTraitCor</span>,
+               <span class="pl-v">xLabels</span> <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">"</span> <span class="pl-pds">"</span></span>, 
+               <span class="pl-v">yLabels</span> <span class="pl-k">=</span> names(<span class="pl-smi">MEs</span>),
+               <span class="pl-v">ySymbols</span> <span class="pl-k">=</span> names(<span class="pl-smi">MEs</span>), 
+               <span class="pl-v">colorLabels</span> <span class="pl-k">=</span> <span class="pl-c1">FALSE</span>,
+               <span class="pl-v">colors</span> <span class="pl-k">=</span> blueWhiteRed(<span class="pl-c1">50</span>),
+               <span class="pl-v">textMatrix</span> <span class="pl-k">=</span> <span class="pl-smi">textMatrix</span>,
+               <span class="pl-v">setStdMargins</span> <span class="pl-k">=</span> <span class="pl-c1">FALSE</span>,
+               <span class="pl-v">cex.text</span> <span class="pl-k">=</span> <span class="pl-c1">0.9</span>,
+               <span class="pl-v">zlim</span> <span class="pl-k">=</span> c(<span class="pl-k">-</span><span class="pl-c1">1</span>,<span class="pl-c1">1</span>),
+               <span class="pl-v">main</span> <span class="pl-k">=</span> paste(<span class="pl-s"><span class="pl-pds">"</span>Module Association with Motor-neuron sample <span class="pl-pds">"</span></span>))</pre></div>
+
+<h2>
+<a id="step6-relationship-of-top-module-genes" class="anchor" href="#step6-relationship-of-top-module-genes" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Step6. Relationship of top module genes</h2>
+
+<p>Here you will do gene-level visualization. One example is to look at the relationship of the top genes with the highest eigen-values of the module. </p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-c"># Retrieve module colours</span>
+table(<span class="pl-smi">net</span><span class="pl-k">$</span><span class="pl-smi">colors</span>)
+
+<span class="pl-smi">kMEdat</span> <span class="pl-k">&lt;-</span> signedKME(t(<span class="pl-smi">datExpr</span>), <span class="pl-smi">MEs</span>, <span class="pl-v">corFnc</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>cor<span class="pl-pds">"</span></span>)
+
+colnames(<span class="pl-smi">kMEdat</span>) <span class="pl-k">&lt;-</span> colnames(<span class="pl-smi">MEs</span>)
+
+colnames(<span class="pl-smi">kMEdat</span>) <span class="pl-c"># module colours</span>
+
+<span class="pl-v">mod_col</span> <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>turquoise<span class="pl-pds">'</span></span>
+
+<span class="pl-smi">mod_kMEdat</span> <span class="pl-k">&lt;-</span> <span class="pl-smi">kMEdat</span>[<span class="pl-smi">net</span><span class="pl-k">$</span><span class="pl-smi">colors</span><span class="pl-k">==</span><span class="pl-smi">mod_col</span>,]
+
+<span class="pl-c"># Select the top 100 genes</span>
+<span class="pl-v">topGenes</span><span class="pl-k">=</span>rank(<span class="pl-smi">mod_kMEdat</span>[,<span class="pl-smi">mod_col</span>],
+                <span class="pl-v">ties.method</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>first<span class="pl-pds">"</span></span>)<span class="pl-k">&lt;</span><span class="pl-k">=</span><span class="pl-c1">100</span>
+
+<span class="pl-v">gene.names</span><span class="pl-k">=</span> rownames(<span class="pl-smi">mod_kMEdat</span>)[<span class="pl-smi">topGenes</span>]
+
+<span class="pl-c"># Subset the adjacency matrix</span>
+<span class="pl-smi">adj</span> <span class="pl-k">&lt;-</span> <span class="pl-smi">adjacency</span>[<span class="pl-smi">net</span><span class="pl-k">$</span><span class="pl-smi">colors</span><span class="pl-k">==</span><span class="pl-smi">mod_col</span>,
+                    <span class="pl-smi">net</span><span class="pl-k">$</span><span class="pl-smi">colors</span><span class="pl-k">==</span><span class="pl-smi">mod_col</span>]
+
+<span class="pl-smi">adj</span> <span class="pl-k">&lt;-</span> <span class="pl-smi">adj</span>[<span class="pl-smi">topGenes</span>,<span class="pl-smi">topGenes</span>]
+
+quantile(<span class="pl-smi">adj</span>)
+
+<span class="pl-c"># This is optional. I discard few edges with a low correlation value by replacing with 0 value, This will highlight few nodes with high connectivity. If you want to use this option, please remove the hashtag(#) from the sentence below.</span>
+<span class="pl-c"># adj[adj&lt;0.001] &lt;- 0</span>
+
+<span class="pl-c"># Define a graph object for a network plot</span>
+<span class="pl-smi">g1</span> <span class="pl-k">&lt;-</span> graph.adjacency(as.matrix(<span class="pl-smi">adj</span>),
+                        <span class="pl-v">mode</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>undirected<span class="pl-pds">"</span></span>,
+                        <span class="pl-v">weighted</span><span class="pl-k">=</span><span class="pl-c1">TRUE</span>,
+                        <span class="pl-v">diag</span><span class="pl-k">=</span><span class="pl-c1">FALSE</span>) 
+
+<span class="pl-c"># Create an object for plotting graph</span>
+par(<span class="pl-v">mar</span> <span class="pl-k">=</span> c(<span class="pl-c1">1</span>, <span class="pl-c1">1</span>, <span class="pl-c1">1</span>, <span class="pl-c1">1</span>))
+plot.igraph(<span class="pl-smi">g1</span>,
+            <span class="pl-v">vertex.size</span><span class="pl-k">=</span><span class="pl-c1">10</span>, 
+            <span class="pl-v">vertex.label.dist</span><span class="pl-k">=</span><span class="pl-c1">0.5</span>,
+            <span class="pl-v">vertex.label.font</span><span class="pl-k">=</span><span class="pl-c1">0.2</span>,
+            <span class="pl-v">vertex.color</span><span class="pl-k">=</span><span class="pl-smi">mod_col</span>,
+            <span class="pl-v">edge.color</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>grey<span class="pl-pds">"</span></span>,
+            <span class="pl-v">edge.width</span><span class="pl-k">=</span>E(<span class="pl-smi">g1</span>)<span class="pl-k">$</span><span class="pl-smi">weight</span><span class="pl-k">*</span><span class="pl-c1">100</span>)</pre></div>
+
+<h2>
+<a id="step7-annotate-modules-genes-with-drosophila-gene-ontology-web" class="anchor" href="#step7-annotate-modules-genes-with-drosophila-gene-ontology-web" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Step7. Annotate modules genes with Drosophila Gene Ontology (Web)</h2>
+
+<p>Here you will annotate your module genes by pathway database. Please go to the <a href="http://geneontology.org/page/go-enrichment-analysis">Gene Ontology Website</a> and copy-and-paste your genes into the box (left) for enrichment text. Alternatively, you can use a R package for this (GO.db). </p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-c"># Save your gene list into "topGenes.txt"</span>
+writeLines(<span class="pl-smi">gene.names</span>, <span class="pl-s"><span class="pl-pds">'</span>topGenes.txt<span class="pl-pds">'</span></span>,<span class="pl-v">sep</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span><span class="pl-cce">\n</span><span class="pl-pds">'</span></span>)
+
+<span class="pl-c"># Save your module genes and do Gene ontology annotation to see which genes are represented in your module.</span>
+
+<span class="pl-c"># Turquoise</span>
+<span class="pl-smi">geneturquoise</span> <span class="pl-k">&lt;-</span> rownames(<span class="pl-smi">datExpr</span>)[<span class="pl-smi">net</span><span class="pl-k">$</span><span class="pl-smi">colors</span><span class="pl-k">==</span><span class="pl-s"><span class="pl-pds">"</span>turquoise<span class="pl-pds">"</span></span>]
+
+writeLines(<span class="pl-smi">geneturquoise</span>,<span class="pl-s"><span class="pl-pds">'</span>modGenes_turquoise.txt<span class="pl-pds">'</span></span>,<span class="pl-v">sep</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span><span class="pl-cce">\n</span><span class="pl-pds">'</span></span>)
+
+<span class="pl-c"># Red Module</span>
+<span class="pl-smi">geneRed</span> <span class="pl-k">&lt;-</span> rownames(<span class="pl-smi">datExpr</span>)[<span class="pl-smi">net</span><span class="pl-k">$</span><span class="pl-smi">colors</span><span class="pl-k">==</span><span class="pl-s"><span class="pl-pds">"</span>red<span class="pl-pds">"</span></span>]
+
+writeLines(<span class="pl-smi">geneRed</span>, <span class="pl-s"><span class="pl-pds">'</span>modGenes_Red.txt<span class="pl-pds">'</span></span>,<span class="pl-v">sep</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span><span class="pl-cce">\n</span><span class="pl-pds">'</span></span>)</pre></div>
+
+<h2>
+<a id="what-you-might-want-to-do-next" class="anchor" href="#what-you-might-want-to-do-next" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>What you might want to do next</h2>
+
+<ul>
+<li>Gene set enrichment with the gene list of your interest (e.g. synatic genes)</li>
+</ul>
+
+      <footer class="site-footer">
+        <span class="site-footer-owner"><a href="https://github.com/joonan30/2016mbl_wgcna">2016mbl wgcna</a> is maintained by <a href="https://github.com/joonan30">joonan30</a>.</span>
+
+        <span class="site-footer-credits">This page was generated by <a href="https://pages.github.com">GitHub Pages</a> using the <a href="https://github.com/jasonlong/cayman-theme">Cayman theme</a> by <a href="https://twitter.com/jasonlong">Jason Long</a>.</span>
+      </footer>
+
+    </section>
+
+  
+  </body>
+</html>
